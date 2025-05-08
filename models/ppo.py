@@ -3,7 +3,6 @@ import torch.nn.functional as F
 from torch.distributions import Categorical
 from models.policy_network import PolicyNetwork
 
-
 class PPOAgent:
     def __init__(self, input_dim, action_dim, config):
         self.model = PolicyNetwork(input_dim, action_dim=action_dim)
@@ -13,7 +12,6 @@ class PPOAgent:
         self.priority_scale = config.get('priority_scale', 1.0)
 
     def select_action(self, state, graph_data):
-        #  输入维度：[1, input_dim], [1, N, N]
         state = torch.FloatTensor(state).unsqueeze(0)  # [1, input_dim]
         graph_data = graph_data if isinstance(graph_data, torch.Tensor) else torch.FloatTensor(graph_data).unsqueeze(0)
 

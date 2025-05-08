@@ -5,6 +5,7 @@ from gym import spaces
 from environment.task import Task
 from environment.resource import Machine, Worker
 
+
 class ManufacturingEnv(gym.Env):
     def __init__(self, config):
         super(ManufacturingEnv, self).__init__()
@@ -20,11 +21,14 @@ class ManufacturingEnv(gym.Env):
         self.num_machines_per_dept = config['num_machines_per_dept']
         self.num_workers_per_dept = config['num_workers_per_dept']
 
+        # Action space: task selection and resource allocation
         self.action_space = spaces.Discrete(self.max_tasks * self.num_departments)
-        self.observation_space = spaces.Box(low=0, high=1, shape=(15,), dtype=np.float32)
+
+        # Observation space: task features + resource availability
+        # Adjusted to fit 15 as in the previous example; modify as needed
+        self.observation_space = spaces.Box(low=0, high=1, shape=(26,), dtype=np.float32)
 
         self.resource_graph = nx.DiGraph()
-
         self.reset()
 
     def reset(self):
@@ -37,6 +41,7 @@ class ManufacturingEnv(gym.Env):
         self._generate_resources()
         self._generate_initial_tasks()
 
+        # Ensure that the observation space is returned properly as vector + graph data
         obs_vector = self._get_obs()
         graph_data = self._get_resource_graph()
         return {
@@ -50,12 +55,11 @@ class ManufacturingEnv(gym.Env):
         info = {}
         self.current_time += 1
 
-
         task_idx = action % self.max_tasks
         task = self.tasks[task_idx]
 
         if task.is_done:
-            reward -= 1  # 负面奖励：调度已完成的任务
+            reward -= 1  # Negative reward: task already completed
         else:
             machine = self._find_available_machine(task.task_type)
             worker = self._find_available_worker(task.task_type)
@@ -68,23 +72,27 @@ class ManufacturingEnv(gym.Env):
                 machine.busy_until = task.finish_time
                 worker.busy_until = task.finish_time
 
-                reward += 10  # 正面奖励：成功调度一个任务
+                reward += 10  # Positive reward: successfully scheduled task
 
+                # Priority-based reward
                 if task.finish_time <= task.deadline:
-                    reward += 5  # 提前完成奖励
+                    reward += 5  # Early completion reward
                 else:
-                    reward -= (task.finish_time - task.deadline) * 0.5  # 超期惩罚
+                    reward -= (task.finish_time - task.deadline) * 0.5  # Penalty for delay
             else:
-                reward -= 2  # 没有可用资源
+                reward -= 2  # No available resources
 
+        # Check if all tasks are done
         if all(t.is_done for t in self.tasks):
             done = True
 
+        # Check for deadlock
         if self._check_deadlock():
             reward -= 20
             done = True
             info['deadlock'] = True
 
+        # Return updated observation vector and resource graph
         obs_vector = self._get_obs()
         graph_data = self._get_resource_graph()
         return {
@@ -110,7 +118,7 @@ class ManufacturingEnv(gym.Env):
         for i in range(self.max_tasks):
             t = Task(
                 task_id=i,
-                task_type=i % 2,
+                task_type=i % 2,  # Alternate task types
                 processing_time=5 + (i % 3),
                 deadline=10 + i,
                 priority=i % 3
@@ -127,10 +135,25 @@ class ManufacturingEnv(gym.Env):
     def _get_obs(self):
         obs = []
 
-        for task in self.tasks[:5]:
+        # Task features (processing time, deadline, priority)
+        for task in self.tasks[:5]:  # Only first 5 tasks for observation
             obs.append(task.processing_time / 10.0)
             obs.append(task.deadline / 100.0)
             obs.append(task.priority / 3.0)
+
+            # Remaining processing time (if task not done)
+            if task.start_time is None:
+                remaining_time = task.processing_time
+            else:
+                remaining_time = task.processing_time - (self.current_time - task.start_time) if not task.is_done else 0
+
+            obs.append(remaining_time / 10.0)
+
+        # Resource availability (machine and worker)
+        for machine in self.machines[:3]:  # Only first 3 machines for observation
+            obs.append(1.0 if self.current_time >= machine.busy_until else 0.0)
+        for worker in self.workers[:3]:  # Only first 3 workers for observation
+            obs.append(1.0 if self.current_time >= worker.busy_until else 0.0)
 
         while len(obs) < 15:
             obs.append(0.0)
