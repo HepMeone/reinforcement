@@ -1,0 +1,8 @@
+
+torch>=1.13.0
+gym>=0.26.2
+numpy
+pandas
+networkx
+matplotlib
+seaborn
